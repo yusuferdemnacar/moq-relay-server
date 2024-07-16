@@ -7,6 +7,7 @@ import (
 	"io"
 	"io/fs"
 	"log"
+	"math/rand"
 	"net/http"
 	"net/url"
 	"os"
@@ -14,6 +15,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/grafov/m3u8"
 )
@@ -103,6 +105,8 @@ func downloadPlaylistFile(channel Channel, dirPath string) error {
 	}
 	defer os.Remove(tempFile.Name())
 
+	log.Printf("Downloading %s to %s", channel.PlaylistURL, tempFile.Name())
+
 	if err := downloadFile(channel.PlaylistURL, tempFile.Name()); err != nil {
 		log.Printf("Failed to download file from %s: %v", channel.PlaylistURL, err)
 		tempFile.Close()
@@ -128,7 +132,7 @@ func downloadPlaylistFile(channel Channel, dirPath string) error {
 
 func saveChannelInfo(channel Channel, dirPath string) error {
 
-	channelInfoPath := filepath.Join(dirPath, "channels", channel.Name, "info.json")
+	channelInfoPath := filepath.Join(dirPath, "channels", channel.Name, "channel.json")
 
 	channelJSON, err := json.MarshalIndent(channel, "", "  ")
 	if err != nil {
@@ -156,6 +160,9 @@ func downloadFile(url, filePath string) error {
 	if err != nil {
 		return err
 	}
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("unexpected status code: %d", resp.StatusCode)
+	}
 	defer resp.Body.Close()
 
 	out, err := os.Create(filePath)
@@ -168,7 +175,8 @@ func downloadFile(url, filePath string) error {
 	return err
 }
 
-func extractMediaURLs(channel *Channel, playlistPath string) error {
+func setMediaURLs(channel *Channel, playlistPath string) error {
+
 	channelDir := filepath.Join(playlistPath, "channels", channel.Name)
 	var playlistFilename string
 
@@ -228,4 +236,104 @@ func extractMediaURLs(channel *Channel, playlistPath string) error {
 	}
 
 	return nil
+}
+
+func getChannelNames(channels map[string]Channel) []string {
+	channelNames := make([]string, 0, len(channels))
+	for name := range channels {
+		channelNames = append(channelNames, name)
+	}
+	return channelNames
+}
+
+func getAvailableChannelNames(playlistDirPath string) ([]string, error) {
+	dirEntries, err := os.ReadDir(filepath.Join(playlistDirPath, "channels"))
+	if err != nil {
+		return nil, err
+	}
+
+	var channelNames []string
+	for _, dirEntry := range dirEntries {
+		if dirEntry.IsDir() {
+			channelNames = append(channelNames, dirEntry.Name())
+		}
+	}
+
+	return channelNames, nil
+}
+
+func filterAvailableChannels(channels map[string]Channel, availableChannelNames []string) map[string]Channel {
+	availableChannels := make(map[string]Channel)
+	for _, name := range availableChannelNames {
+		if channel, ok := channels[name]; ok {
+			availableChannels[name] = channel
+		}
+	}
+	return availableChannels
+}
+
+func getAvailableChannelsFromFile(availableChannelNames []string, playlistDirPath string) map[string]Channel {
+
+	availableChannels := make(map[string]Channel)
+	for _, name := range availableChannelNames {
+		channelPath := filepath.Join(playlistDirPath, "channels", name, "channel.json")
+		file, err := os.Open(channelPath)
+		if err != nil {
+			log.Printf("Failed to open %s: %v", channelPath, err)
+			continue
+		}
+		defer file.Close()
+
+		var channel Channel
+		if err := json.NewDecoder(file).Decode(&channel); err != nil {
+			log.Printf("Failed to decode %s: %v", channelPath, err)
+			continue
+		}
+
+		availableChannels[name] = channel
+
+	}
+
+	return availableChannels
+
+}
+
+func updatePlaylistFiles(playlistPath string) error {
+	allChannels, err := parsePlaylist(playlistPath)
+	if err != nil {
+		fmt.Println("Error parsing playlist:", err)
+		return err
+	}
+
+	playlistDirPath := filepath.Dir(playlistPath)
+
+	for _, channel := range allChannels {
+		downloadPlaylistFile(channel, playlistDirPath)
+		fmt.Println()
+	}
+
+	availableChannelNames, _ := getAvailableChannelNames(playlistDirPath)
+	availableChannels := filterAvailableChannels(allChannels, availableChannelNames)
+
+	for _, channel := range availableChannels {
+		setMediaURLs(&channel, playlistDirPath)
+		saveChannelInfo(channel, playlistDirPath)
+	}
+
+	return nil
+
+}
+
+func randomChannel(channels map[string]Channel) Channel {
+	r := rand.New(rand.NewSource(time.Now().UnixNano()))
+	channelNames := getChannelNames(channels)
+	randomChannelName := channelNames[r.Intn(len(channelNames))]
+	randomChannel := channels[randomChannelName]
+	return randomChannel
+}
+
+func randomMediaURL(channel Channel) string {
+	r := rand.New(rand.NewSource(time.Now().UnixNano()))
+	randomMediaURL := channel.MediaURLs[r.Intn(len(channel.MediaURLs))]
+	return randomMediaURL
 }
