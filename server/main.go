@@ -24,6 +24,7 @@ func main() {
 
 	for _, channel := range channels {
 		downloadPlaylistFile(channel, playlistDirPath)
+		extractMediaURLs(&channel, playlistDirPath)
 		saveChannelInfo(channel, playlistDirPath)
 	}
 }
