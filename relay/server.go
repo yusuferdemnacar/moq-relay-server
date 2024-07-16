@@ -83,6 +83,7 @@ func runServer(moqrsDir string) {
 		conn, err := listener.Accept(context.Background())
 		if err != nil {
 			fmt.Println("Error accepting connection:", err)
+			return
 		}
 		go handleConnection(conn, moqrsDir)
 	}

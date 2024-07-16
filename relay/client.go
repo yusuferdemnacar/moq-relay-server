@@ -99,7 +99,7 @@ func sendMediaURLOverQUIC(url string, outputDirPath string) error {
 
 	outputPath := filepath.Join(outputDirPath, name+".mp4")
 
-	subCmd := fmt.Sprintf("~/moq-rs/target/release/moq-sub --name %s %s | ffmpeg -i - -t 10 -f mp4 %s", name, protocol+"://"+host+":"+fmt.Sprint(port), outputPath)
+	subCmd := fmt.Sprintf("~/moq-rs/target/release/moq-sub --name %s %s | ffmpeg -i - -t 10 %s", name, protocol+"://"+host+":"+fmt.Sprint(port), outputPath)
 	cmd := exec.Command("bash", "-c", subCmd)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
